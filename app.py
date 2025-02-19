@@ -1,8 +1,10 @@
 from flask import Flask
-from flask_restful import Resource, Api, reqparse, abort
+from flask_restful import Resource, Api, reqparse
+import re
 
 app = Flask(__name__)
 api = Api(app)
+
 # Listas com os dicionários que são as entidades cursos, alunos e matrículas
 cursos = [
     {
@@ -52,7 +54,7 @@ matriculas = [
         'enrollment_date': '17/02/2025'
     }
 ]
-# Classe cursos que herda 'Resource' que é um recurso da API RESTFull
+# Classe cursos que herda 'Resource' que é um recurso da API RESTFull.
 class Cursos(Resource):
     def get(self): # Método GET dentro da classe 'Cursos'. 
         return {'cursos': cursos} # Retorna um dicionário com a lista de cursos quando uma solicitação GET é feita.
@@ -140,6 +142,17 @@ class Aluno(Resource):
 
     def post(self, aluno_id):
         dados = Aluno.argumentos.parse_args()
+        
+        # Vadidação do nome
+        if not dados['aluno_name']: # Se o campo 'aluno_name' não estiver na variável dados
+            return {'mensagem': 'O campo nome é obrigatório. Digite seu nome'}, 400 # Erro de Bad Request
+
+        # Validação do e-mail
+        if not dados['aluno_email']: # Se o campo 'aluno_email não estiver na variável dados
+            return {'mensagem': 'O campo e-mail é obrigatório. Digite seu e-mail'}, 400 # Erro de Bad Request
+        
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", dados['aluno_email']): # Expressão regular que define o padrão de um e-mail 
+            return {'mensagem': 'O e-mail fornecido é inválido. Digite e-mail correto. Exemplo:seu_nome@email.com'}, 400 # Erro de Bad Request
 
         novo_aluno = {
             'aluno_id': aluno_id,
@@ -197,10 +210,14 @@ class Matricula(Resource):
         if matricula:
             return matricula
         return {'mensagem':'Matrícula não encontrada.'}, 404 # Not found --> Não encontrado
-
-    def post(self, matricula_id):
         
+    def post(self, matricula_id):
         dados = Matricula.argumentos.parse_args()
+        for matricula in matriculas: # Loop que percorre as matrículas
+            if matricula['aluno_id'] == dados['aluno_id'] and matricula['curso_id'] == dados['curso_id']: # Se o 'aluno_id' e 'curso_id' estiverem cadastrados em 'matricula'
+                return {'mensagem': 'Este aluno já está matriculado neste curso.'}, 409 # Retorna mensagem de Erro de Conflito, pois a matrícula está duplicada
+
+
         nova_matricula = {
             'matricula_id': matricula_id,
             'curso_id': dados['curso_id'],
@@ -208,9 +225,9 @@ class Matricula(Resource):
             'enrollment_date': dados['enrollment_date']
         }
 
-        matriculas.append(nova_matricula)
+        matriculas.append(nova_matricula) 
         return nova_matricula, 200 # Código de Sucesso
-
+  
     def put(self, matricula_id):
 
         dados = Matricula.argumentos.parse_args()
@@ -243,16 +260,16 @@ class CursoAlunos(Resource):  # Classe 'CursoAlunos' para listar alunos de um cu
                     alunos_matriculados.append(aluno) # Adiciona esse aluno a lista 'alunos_matriculados'
         return {'alunos': alunos_matriculados} # Retorna um dicionário com a lista de alunos matriculados no curso
 
-    class AlunoCursos(Resource):  # Classe 'AlunoCursos' para listar cursos de um aluno
-        def get(self, aluno_id): # Método GET que têm parametros 'self'(ele mesmo) e 'aluno_id'
-            cursos_matriculados = [] # Lista vazia de cursos matriculados
-            for matricula in matriculas: # Loop que percorre a lista 'matriculas'
-                if matricula['aluno_id'] == aluno_id: # Se o ID do aluno na matrícula for igual ao 'aluno_id' fornecido
-                    curso = Curso.encontrar_curso(matricula['curso_id']) # Encontra o curso 'curso_id' na matricula
-                    if curso: # Se o curso for encontrado
-                        cursos_matriculados.append(curso) # Adiciona esse curso a lista 'cursos_matriculados'
-            return {'cursos': cursos_matriculados} # Retorna um dicionário com a lista de cursos que o aluno está matriculado  
-    
+class AlunoCursos(Resource): # Classe 'AlunoCursos' para listar cursos de um aluno
+    def get(self, aluno_id): # Método GET que têm parametros 'self'(ele mesmo) e 'aluno_id'
+        cursos_matriculados = [] # Lista vazia de cursos matriculados
+        for matricula in matriculas: # Loop que percorre a lista 'matriculas'
+            if matricula['aluno_id'] == aluno_id: # Se o ID do aluno na matrícula for igual ao 'aluno_id' fornecido
+                curso = Curso.encontrar_curso(matricula['curso_id']) # Encontra o curso 'curso_id' na matricula
+                if curso: # Se o curso for encontrado
+                    cursos_matriculados.append(curso) # Adiciona esse curso a lista 'cursos_matriculados'
+        return {'cursos': cursos_matriculados} # Retorna um dicionário com a lista de cursos que o aluno está matr
+
 # Adicionando todas as rotas
 api.add_resource(Cursos, '/cursos')
 api.add_resource(Curso, '/cursos/<string:curso_id>')
@@ -261,8 +278,7 @@ api.add_resource(Aluno, '/alunos/<string:aluno_id>')
 api.add_resource(Matriculas, '/matriculas')
 api.add_resource(Matricula, '/matriculas/<string:matricula_id>')
 api.add_resource(CursoAlunos, '/cursos/<string:curso_id>/alunos')  
-api.add_resource(AlunoCursos, '/alunos/<string:aluno_id>/cursos')  
-
+api.add_resource(AlunoCursos, '/alunos/<string:aluno_id>/cursos')
 
 if __name__ == '__main__': # Se o nome for o principal (app.py), rode o programa
     app.run(debug=True) #Deixar esse debug apenas enquanto estivermos produzindo a API. Depois retiramos
